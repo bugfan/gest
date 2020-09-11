@@ -12,10 +12,10 @@ import (
 )
 
 type modelAndController struct {
-	Controllers, Models interface{}
-	Extra               []string
-	NotCopy             []string
-	HiddenFiled         []string
+	Controller, Model interface{}
+	Extra             []string
+	NotCopy           []string
+	HiddenFiled       []string
 }
 
 var modelAndControllers []*modelAndController
@@ -29,8 +29,8 @@ func RegisterModelAndController(m, c interface{}, hiddenField []string, g ...str
 		return
 	}
 	t := &modelAndController{
-		Controllers: c,
-		Models:      m,
+		Controller:  c,
+		Model:       m,
 		Extra:       g,
 		HiddenFiled: hiddenField,
 	}
@@ -41,11 +41,11 @@ func NewAPIBackend(g *gin.Engine, x *xorm.Engine, relativePath string) error {
 	group := g.Group(relativePath)
 	// bind routes
 	for _, mc := range modelAndControllers {
-		modelT := reflect.TypeOf(mc.Models)
+		modelT := reflect.TypeOf(mc.Model)
 		if modelT.Kind() == reflect.Ptr {
 			modelT = modelT.Elem()
 		}
-		controllerT := reflect.TypeOf(mc.Controllers)
+		controllerT := reflect.TypeOf(mc.Controller)
 		if controllerT.Kind() == reflect.Ptr {
 			controllerT = controllerT.Elem()
 		}
@@ -55,7 +55,7 @@ func NewAPIBackend(g *gin.Engine, x *xorm.Engine, relativePath string) error {
 		if len(mc.Extra) > 0 && extra != "" {
 			subrouting = extra
 		}
-		rest.bind(group.Group(subrouting))
+		rest.bind(group.Group(subrouting), mc.Controller)
 	}
 	return nil
 }
@@ -149,25 +149,73 @@ type handlerDelete interface {
 	Delete(*gin.Context)
 }
 
-func (b *Rest) bind(g *gin.RouterGroup) {
+func (b *Rest) bind(g *gin.RouterGroup, h interface{}) {
 	route := b.routes
 	if (route & RouteTypeNew) != 0 {
-		g.POST("", b.New)
+		reflectVal := reflect.ValueOf(h)
+		t := reflect.Indirect(reflectVal).Type()
+		newObj := reflect.New(t)
+		handler, ok := newObj.Interface().(handlerNew)
+		if ok {
+			g.POST("", handler.New)
+		} else {
+			g.POST("", b.New)
+		}
 	}
 	if (route & RouteTypeList) != 0 {
-		g.GET("", b.List)
+		reflectVal := reflect.ValueOf(h)
+		t := reflect.Indirect(reflectVal).Type()
+		newObj := reflect.New(t)
+		handler, ok := newObj.Interface().(handlerList)
+		if ok {
+			g.GET("", handler.List)
+		} else {
+			g.GET("", b.List)
+		}
 	}
 	if (route & RouteTypeGet) != 0 {
-		g.GET("/:id", b.Get)
+		reflectVal := reflect.ValueOf(h)
+		t := reflect.Indirect(reflectVal).Type()
+		newObj := reflect.New(t)
+		handler, ok := newObj.Interface().(handlerGet)
+		if ok {
+			g.GET("/:id", handler.Get)
+		} else {
+			g.GET("/:id", b.Get)
+		}
 	}
 	if (route & RouteTypeUpdate) != 0 {
-		g.PUT("/:id", b.Update)
+		reflectVal := reflect.ValueOf(h)
+		t := reflect.Indirect(reflectVal).Type()
+		newObj := reflect.New(t)
+		handler, ok := newObj.Interface().(handlerUpdate)
+		if ok {
+			g.PUT("/:id", handler.Update)
+		} else {
+			g.PUT("/:id", b.Update)
+		}
 	}
 	if (route & RouteTypePatch) != 0 {
-		g.PATCH("/:id", b.Patch)
+		reflectVal := reflect.ValueOf(h)
+		t := reflect.Indirect(reflectVal).Type()
+		newObj := reflect.New(t)
+		handler, ok := newObj.Interface().(handlerPatch)
+		if ok {
+			g.PATCH("/:id", handler.Patch)
+		} else {
+			g.PATCH("/:id", b.Patch)
+		}
 	}
 	if (route & RouteTypeDelete) != 0 {
-		g.DELETE("/:id", b.Delete)
+		reflectVal := reflect.ValueOf(h)
+		t := reflect.Indirect(reflectVal).Type()
+		newObj := reflect.New(t)
+		handler, ok := newObj.Interface().(handlerDelete)
+		if ok {
+			g.DELETE("/:id", handler.Delete)
+		} else {
+			g.DELETE("/:id", b.Delete)
+		}
 	}
 }
 
