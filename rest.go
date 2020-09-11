@@ -11,15 +11,82 @@ import (
 	"github.com/go-xorm/xorm"
 )
 
-type Rest struct {
-	model       interface{}
-	modelType   reflect.Type
-	content     interface{}
-	contentType reflect.Type
-	engine      *xorm.Engine
-	routes      RouteType
-	HiddenField []string
-	NotCopy     []string
+type modelAndController struct {
+	Controllers, Models interface{}
+	Extra               []string
+	NotCopy             []string
+	HiddenFiled         []string
+}
+
+var modelAndControllers []*modelAndController
+
+func init() {
+	modelAndControllers = make([]*modelAndController, 0)
+}
+
+func RegisterModelAndController(m, c interface{}, hiddenField []string, g ...string) {
+	if m == nil || c == nil {
+		return
+	}
+	t := &modelAndController{
+		Controllers: c,
+		Models:      m,
+		Extra:       g,
+		HiddenFiled: hiddenField,
+	}
+	modelAndControllers = append(modelAndControllers, t)
+}
+
+func NewAPIBackend(g *gin.Engine, x *xorm.Engine, relativePath string) error {
+	group := g.Group(relativePath)
+	// bind routes
+	for _, mc := range modelAndControllers {
+		modelT := reflect.TypeOf(mc.Models)
+		if modelT.Kind() == reflect.Ptr {
+			modelT = modelT.Elem()
+		}
+		controllerT := reflect.TypeOf(mc.Controllers)
+		if controllerT.Kind() == reflect.Ptr {
+			controllerT = controllerT.Elem()
+		}
+		rest := NewRest(x, modelT, controllerT, RouteTypeALL, mc.HiddenFiled)
+		subrouting := strings.ToLower(controllerT.Name())
+		extra := strings.TrimSpace(mc.Extra[0])
+		if len(mc.Extra) > 0 && extra != "" {
+			subrouting = extra
+		}
+		rest.bind(group.Group(subrouting))
+	}
+	return nil
+}
+
+func exports(b interface{}) map[string]interface{} {
+	fieldVal := make(map[string]interface{})
+	ptrObjVal := reflect.ValueOf(b)
+	objVal := ptrObjVal.Elem()
+	objType := objVal.Type()
+	fieldNum := objType.NumField()
+	for i := 0; i < fieldNum; i++ {
+		sf := objType.Field(i)
+		valField := objVal.Field(i)
+		if valField.CanInterface() {
+			fieldVal[sf.Name] = valField.Interface()
+		}
+	}
+	return fieldVal
+}
+
+func setExports(to, from interface{}) {
+	exports := exports(from)
+	for name, val := range exports {
+		valVal := reflect.ValueOf(val)
+		ptrObjVal := reflect.ValueOf(to)
+		objVal := ptrObjVal.Elem()
+		fieldVal := objVal.FieldByName(name)
+		if fieldVal.IsValid() && fieldVal.Type() == valVal.Type() {
+			fieldVal.Set(valVal)
+		}
+	}
 }
 
 type RouteType int
@@ -31,37 +98,36 @@ const (
 	RouteTypeUpdate // put
 	RouteTypePatch  // patch
 	RouteTypeDelete // delete
-	RouteTypeALL    = RouteTypeNew | RouteTypeList | RouteTypeGet | RouteTypeUpdate | RouteTypeDelete
+	RouteTypeALL    = RouteTypeNew | RouteTypeList | RouteTypeGet | RouteTypeUpdate | RouteTypePatch | RouteTypeDelete
+	// RouteTypeALL    = RouteTypeNew | RouteTypeList | RouteTypeGet | RouteTypeUpdate | RouteTypeDelete
 )
 
-func NewRest(engine *xorm.Engine, model interface{}, content interface{}, routes ...RouteType) *Rest {
-	modelT := reflect.TypeOf(model)
-	if modelT.Kind() == reflect.Ptr {
-		modelT = modelT.Elem()
-	}
-	fmt.Println("T:", modelT)
-	contentT := reflect.TypeOf(content)
-	if contentT.Kind() == reflect.Ptr {
-		contentT = contentT.Elem()
-	}
-
-	var route RouteType
-	for _, r := range routes {
-		route |= r
-	}
+func NewRest(e *xorm.Engine, modelT, controllerT reflect.Type, r RouteType, hiddenField []string) *Rest {
 	return &Rest{
-		model:       model,
-		content:     content,
-		engine:      engine,
-		modelType:   modelT,
-		contentType: contentT,
-		routes:      route,
-		NotCopy:     []string{"ID", "Created", "Updated"},
+		modelType:      modelT,
+		controllerType: controllerT,
+		routes:         r,
+		engine:         e,
+		HiddenField:    hiddenField,
+		NotCopy:        []string{"ID", "Created", "Updated"},
 	}
+}
+
+type Rest struct {
+	modelType      reflect.Type
+	controllerType reflect.Type
+	engine         *xorm.Engine
+	routes         RouteType
+	HiddenField    []string
+	NotCopy        []string
 }
 
 type handlerBefore interface {
 	Before(*gin.Context, *xorm.Engine) bool
+}
+
+type handlerAfter interface {
+	After(*gin.Context, *xorm.Engine) bool
 }
 
 type handlerNew interface {
@@ -83,128 +149,58 @@ type handlerDelete interface {
 	Delete(*gin.Context)
 }
 
-func (b *Rest) register(g *gin.RouterGroup, h interface{}) {
+func (b *Rest) bind(g *gin.RouterGroup) {
 	route := b.routes
 	if (route & RouteTypeNew) != 0 {
-		reflectVal := reflect.ValueOf(h)
-		t := reflect.Indirect(reflectVal).Type()
-		newObj := reflect.New(t)
-		handler, ok := newObj.Interface().(handlerNew)
-		if ok {
-			g.POST("", handler.New)
-		} else {
-			g.POST("", b.New)
-		}
+		g.POST("", b.New)
 	}
 	if (route & RouteTypeList) != 0 {
-		reflectVal := reflect.ValueOf(h)
-		t := reflect.Indirect(reflectVal).Type()
-		newObj := reflect.New(t)
-		handler, ok := newObj.Interface().(handlerList)
-		if ok {
-			g.GET("", handler.List)
-		} else {
-			g.GET("", b.List)
-		}
+		g.GET("", b.List)
 	}
 	if (route & RouteTypeGet) != 0 {
-		reflectVal := reflect.ValueOf(h)
-		t := reflect.Indirect(reflectVal).Type()
-		newObj := reflect.New(t)
-		handler, ok := newObj.Interface().(handlerGet)
-		if ok {
-			g.GET("/:id", handler.Get)
-		} else {
-			g.GET("/:id", b.Get)
-		}
+		g.GET("/:id", b.Get)
 	}
 	if (route & RouteTypeUpdate) != 0 {
-		reflectVal := reflect.ValueOf(h)
-		t := reflect.Indirect(reflectVal).Type()
-		newObj := reflect.New(t)
-		handler, ok := newObj.Interface().(handlerUpdate)
-		if ok {
-			g.PUT("/:id", handler.Update)
-		} else {
-			g.PUT("/:id", b.Update)
-		}
+		g.PUT("/:id", b.Update)
 	}
 	if (route & RouteTypePatch) != 0 {
-		reflectVal := reflect.ValueOf(h)
-		t := reflect.Indirect(reflectVal).Type()
-		newObj := reflect.New(t)
-		handler, ok := newObj.Interface().(handlerPatch)
-		if ok {
-			g.PATCH("/:id", handler.Patch)
-		} else {
-			g.PATCH("/:id", b.Patch)
-		}
+		g.PATCH("/:id", b.Patch)
 	}
 	if (route & RouteTypeDelete) != 0 {
-		reflectVal := reflect.ValueOf(h)
-		t := reflect.Indirect(reflectVal).Type()
-		newObj := reflect.New(t)
-		handler, ok := newObj.Interface().(handlerDelete)
-		if ok {
-			g.DELETE("/:id", handler.Delete)
-		} else {
-			g.DELETE("/:id", b.Delete)
-		}
+		g.DELETE("/:id", b.Delete)
 	}
 }
 
 func (b *Rest) New(c *gin.Context) {
-
-	contentValue := reflect.New(b.contentType)
-	content := contentValue.Interface()
+	content := reflect.New(b.controllerType).Interface()
 	err := c.BindJSON(content)
 	if err != nil {
 		_ = c.AbortWithError(http.StatusBadRequest, err)
 		return
 	}
-	h, ok := content.(handlerBefore)
-	if ok {
-		if !h.Before(c, b.engine) {
-			c.AbortWithError(http.StatusUnprocessableEntity, nil)
-			return
-		}
-	}
-	m := reflect.New(b.modelType)
-	id, err := b.engine.Insert(m)
-	fmt.Println("E1", err, id)
-
 	model := reflect.New(b.modelType).Interface()
 	err = copyField(model, content, b.NotCopy)
-	fmt.Println("R:", err, reflect.TypeOf(model))
-
 	if err != nil {
 		c.AbortWithError(http.StatusUnprocessableEntity, err)
 		return
 	}
+
 	_, err = b.engine.Insert(model)
 	if err != nil {
 		_ = c.AbortWithError(http.StatusUnprocessableEntity, err)
 		return
 	}
-
-	err = copyField(content, model, b.HiddenField)
+	data := reflect.New(b.controllerType).Interface()
+	err = copyField(data, model, b.HiddenField)
 	if err != nil {
 		c.AbortWithError(http.StatusUnprocessableEntity, err)
 		return
 	}
 
-	c.JSON(http.StatusCreated, content)
+	c.JSON(http.StatusCreated, data)
 }
 
 func (b *Rest) List(c *gin.Context) {
-	// contentValue := reflect.New(b.contentType)
-	// h, ok := contentValue.Interface().(handlerBefore)
-	// if ok {
-	// 	if !h.Before(c, b.engine) {
-	// 		c.AbortWithError(http.StatusBadRequest, nil)
-	// 		return
-	// 	}
-	// }
 	slice := reflect.MakeSlice(reflect.SliceOf(reflect.PtrTo(b.modelType)), 0, 0)
 	slicePtr := reflect.New(slice.Type())
 	sliceVal := slicePtr.Elem()
@@ -214,7 +210,7 @@ func (b *Rest) List(c *gin.Context) {
 	}
 	contentSlice := make([]interface{}, 0, sliceVal.Len())
 	for i := 0; i < sliceVal.Len(); i++ {
-		content := reflect.New(b.contentType).Interface()
+		content := reflect.New(b.controllerType).Interface()
 		err = copyField(content, sliceVal.Index(i).Interface(), b.HiddenField)
 		if err != nil {
 			c.AbortWithError(http.StatusUnprocessableEntity, err)
@@ -227,14 +223,6 @@ func (b *Rest) List(c *gin.Context) {
 }
 
 func (b *Rest) Get(c *gin.Context) {
-	contentValue := reflect.New(b.contentType)
-	h, ok := contentValue.Interface().(handlerBefore)
-	if ok {
-		if !h.Before(c, b.engine) {
-			c.AbortWithError(http.StatusBadRequest, nil)
-			return
-		}
-	}
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.AbortWithError(http.StatusUnprocessableEntity, err)
@@ -254,7 +242,7 @@ func (b *Rest) Get(c *gin.Context) {
 		c.AbortWithError(http.StatusUnprocessableEntity, err)
 		return
 	}
-	content := reflect.New(b.contentType).Interface()
+	content := reflect.New(b.controllerType).Interface()
 	err = copyField(content, inst, b.HiddenField)
 	if err != nil {
 		c.AbortWithError(http.StatusUnprocessableEntity, err)
@@ -265,22 +253,15 @@ func (b *Rest) Get(c *gin.Context) {
 
 func (b *Rest) Update(c *gin.Context) {
 	// get content
-	contentValue := reflect.New(b.contentType)
-	content := contentValue.Interface()
+	content := reflect.New(b.controllerType).Interface()
 	err := c.BindJSON(content)
 	if err != nil {
 		c.AbortWithError(http.StatusBadRequest, err)
 		return
 	}
-
-	h, ok := content.(handlerBefore)
-	if ok {
-		if !h.Before(c, b.engine) {
-			c.AbortWithError(http.StatusBadRequest, nil)
-			return
-		}
-	}
-
+	// if ok := content.Check(c, b, RouteTypeUpdate); !ok {
+	// 	return
+	// }
 	// get model
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -292,7 +273,7 @@ func (b *Rest) Update(c *gin.Context) {
 		return
 	}
 	inst := reflect.New(b.modelType).Interface()
-	has, err := b.engine.ID(id).Get(inst)
+	has, err := b.engine.ID(id).Exist(inst)
 	if !has {
 		c.AbortWithError(http.StatusNotFound, fmt.Errorf("not found %s", c.Param("id")))
 		return
@@ -306,11 +287,13 @@ func (b *Rest) Update(c *gin.Context) {
 		c.AbortWithError(http.StatusUnprocessableEntity, err)
 		return
 	}
+
 	_, err = b.engine.ID(id).AllCols().Update(inst)
 	if err != nil {
 		c.AbortWithError(http.StatusUnprocessableEntity, err)
 		return
 	}
+	content = reflect.New(b.controllerType).Interface()
 	err = copyField(content, inst, b.HiddenField)
 	if err != nil {
 		c.AbortWithError(http.StatusUnprocessableEntity, err)
@@ -321,20 +304,15 @@ func (b *Rest) Update(c *gin.Context) {
 
 func (b *Rest) Patch(c *gin.Context) {
 	// get content
-	contentValue := reflect.New(b.contentType)
-	content := contentValue.Interface()
+	content := reflect.New(b.controllerType).Interface()
 	err := c.BindJSON(content)
 	if err != nil {
 		c.AbortWithError(http.StatusBadRequest, err)
 		return
 	}
-	h, ok := content.(handlerBefore)
-	if ok {
-		if !h.Before(c, b.engine) {
-			c.AbortWithError(http.StatusBadRequest, nil)
-			return
-		}
-	}
+	// if ok := content.Check(c, b, RouteTypePatch); !ok {
+	// 	return
+	// }
 	// get model
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -346,7 +324,7 @@ func (b *Rest) Patch(c *gin.Context) {
 		return
 	}
 	inst := reflect.New(b.modelType).Interface()
-	has, err := b.engine.ID(id).Get(inst)
+	has, err := b.engine.ID(id).Exist(inst)
 	if !has {
 		c.AbortWithError(http.StatusNotFound, fmt.Errorf("not found %s", c.Param("id")))
 		return
@@ -365,6 +343,7 @@ func (b *Rest) Patch(c *gin.Context) {
 		c.AbortWithError(http.StatusUnprocessableEntity, err)
 		return
 	}
+	content = reflect.New(b.controllerType).Interface()
 	err = copyField(content, inst, b.HiddenField)
 	if err != nil {
 		c.AbortWithError(http.StatusUnprocessableEntity, err)
@@ -384,7 +363,7 @@ func (b *Rest) Delete(c *gin.Context) {
 		return
 	}
 	inst := reflect.New(b.modelType).Interface()
-	has, err := b.engine.ID(id).Get(inst)
+	has, err := b.engine.ID(id).Exist(inst)
 	if !has {
 		c.AbortWithError(http.StatusNotFound, fmt.Errorf("not found %s", c.Param("id")))
 		return
@@ -400,7 +379,6 @@ func (b *Rest) Delete(c *gin.Context) {
 	}
 	c.Status(http.StatusNoContent)
 }
-
 func copyField(to interface{}, from interface{}, excepts []string) error {
 	toVal := reflect.ValueOf(to)
 	if toVal.Kind() == reflect.Ptr {
