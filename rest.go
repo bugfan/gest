@@ -226,6 +226,12 @@ func (b *Rest) New(c *gin.Context) {
 		_ = c.AbortWithError(http.StatusBadRequest, err)
 		return
 	}
+	h, ok := content.(handlerBefore)
+	if ok {
+		if !h.Before(c, b.engine) {
+			return
+		}
+	}
 	model := reflect.New(b.modelType).Interface()
 	err = copyField(model, content, b.NotCopy)
 	if err != nil {
@@ -249,6 +255,13 @@ func (b *Rest) New(c *gin.Context) {
 }
 
 func (b *Rest) List(c *gin.Context) {
+	content := reflect.New(b.controllerType).Interface()
+	h, ok := content.(handlerBefore)
+	if ok {
+		if !h.Before(c, b.engine) {
+			return
+		}
+	}
 	slice := reflect.MakeSlice(reflect.SliceOf(reflect.PtrTo(b.modelType)), 0, 0)
 	slicePtr := reflect.New(slice.Type())
 	sliceVal := slicePtr.Elem()
@@ -271,6 +284,13 @@ func (b *Rest) List(c *gin.Context) {
 }
 
 func (b *Rest) Get(c *gin.Context) {
+	content := reflect.New(b.controllerType).Interface()
+	h, ok := content.(handlerBefore)
+	if ok {
+		if !h.Before(c, b.engine) {
+			return
+		}
+	}
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.AbortWithError(http.StatusUnprocessableEntity, err)
@@ -290,7 +310,6 @@ func (b *Rest) Get(c *gin.Context) {
 		c.AbortWithError(http.StatusUnprocessableEntity, err)
 		return
 	}
-	content := reflect.New(b.controllerType).Interface()
 	err = copyField(content, inst, b.HiddenField)
 	if err != nil {
 		c.AbortWithError(http.StatusUnprocessableEntity, err)
@@ -307,9 +326,12 @@ func (b *Rest) Update(c *gin.Context) {
 		c.AbortWithError(http.StatusBadRequest, err)
 		return
 	}
-	// if ok := content.Check(c, b, RouteTypeUpdate); !ok {
-	// 	return
-	// }
+	h, ok := content.(handlerBefore)
+	if ok {
+		if !h.Before(c, b.engine) {
+			return
+		}
+	}
 	// get model
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -358,9 +380,12 @@ func (b *Rest) Patch(c *gin.Context) {
 		c.AbortWithError(http.StatusBadRequest, err)
 		return
 	}
-	// if ok := content.Check(c, b, RouteTypePatch); !ok {
-	// 	return
-	// }
+	h, ok := content.(handlerBefore)
+	if ok {
+		if !h.Before(c, b.engine) {
+			return
+		}
+	}
 	// get model
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -401,6 +426,13 @@ func (b *Rest) Patch(c *gin.Context) {
 }
 
 func (b *Rest) Delete(c *gin.Context) {
+	content := reflect.New(b.controllerType).Interface()
+	h, ok := content.(handlerBefore)
+	if ok {
+		if !h.Before(c, b.engine) {
+			return
+		}
+	}
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.AbortWithError(http.StatusUnprocessableEntity, err)
