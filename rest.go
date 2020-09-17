@@ -51,9 +51,8 @@ func NewAPIBackend(g *gin.Engine, x *xorm.Engine, relativePath string) error {
 		}
 		rest := NewRest(x, modelT, controllerT, RouteTypeALL, mc.HiddenFiled)
 		subrouting := strings.ToLower(controllerT.Name())
-		extra := strings.TrimSpace(mc.Extra[0])
-		if len(mc.Extra) > 0 && extra != "" {
-			subrouting = extra
+		if len(mc.Extra) > 0 && strings.TrimSpace(mc.Extra[0]) != "" {
+			subrouting = strings.TrimSpace(mc.Extra[0])
 		}
 		rest.bind(group.Group(subrouting), mc.Controller)
 	}
