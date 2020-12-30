@@ -4,7 +4,7 @@
 Only need to define the model, automatically generate add delete modify query interface
 
 ## Usage
-`
+```
 // main func
 func main() {
 	g := gin.Default()
@@ -58,4 +58,4 @@ type Admin struct{
     Name string
     Password string
 }
-`
+```
