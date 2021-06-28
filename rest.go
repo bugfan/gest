@@ -24,13 +24,14 @@ func init() {
 	modelAndControllers = make([]*modelAndController, 0)
 }
 
-func RegisterModelAndController(m, c interface{}, hiddenField []string, g ...string) {
-	if m == nil || c == nil {
+// model:model struct controller:conttoller struct hiddenField:not copy field g: subrouting
+func Register(model, controller interface{}, hiddenField []string, g ...string) {
+	if model == nil || controller == nil {
 		return
 	}
 	t := &modelAndController{
-		Controller:  c,
-		Model:       m,
+		Controller:  controller,
+		Model:       model,
 		Extra:       g,
 		HiddenFiled: hiddenField,
 	}
