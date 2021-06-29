@@ -24,7 +24,7 @@ func init() {
 	modelAndControllers = make([]*modelAndController, 0)
 }
 
-// model:model struct controller:conttoller struct hiddenField:not copy field g: subrouting
+// model:model struct controller:conttoller struct hiddenField:not copy field g: subrouting,bind route path
 func Register(model, controller interface{}, hiddenField []string, g ...string) {
 	if model == nil || controller == nil {
 		return
