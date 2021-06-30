@@ -38,7 +38,7 @@ func Register(model, controller interface{}, hiddenField []string, g ...string) 
 	modelAndControllers = append(modelAndControllers, t)
 }
 
-func NewAPIBackend(g *gin.Engine, x *xorm.Engine, relativePath string) http.Handler {
+func NewAPIBackend(g *gin.RouterGroup, x *xorm.Engine, relativePath string) {
 	group := g.Group(relativePath)
 	// bind routes
 	for _, mc := range modelAndControllers {
@@ -57,7 +57,6 @@ func NewAPIBackend(g *gin.Engine, x *xorm.Engine, relativePath string) http.Hand
 		}
 		rest.bind(group.Group(subrouting), mc.Controller)
 	}
-	return g
 }
 
 func exports(b interface{}) map[string]interface{} {
