@@ -124,6 +124,9 @@ type Rest struct {
 type handlerBefore interface {
 	Before(*gin.Context, *xorm.Engine) bool
 }
+type handlerRoute interface {
+	Route(*gin.RouterGroup)
+}
 
 type handlerAfter interface {
 	After(*gin.Context, *xorm.Engine) bool
@@ -150,6 +153,17 @@ type handlerDelete interface {
 
 func (b *Rest) bind(g *gin.RouterGroup, h interface{}) {
 	route := b.routes
+	// reflect route handler
+	if (route & RouteTypeNew) != 0 {
+		reflectVal := reflect.ValueOf(h)
+		t := reflect.Indirect(reflectVal).Type()
+		newObj := reflect.New(t)
+		handler, ok := newObj.Interface().(handlerRoute)
+		if ok {
+			handler.Route(g)
+		}
+	}
+
 	if (route & RouteTypeNew) != 0 {
 		reflectVal := reflect.ValueOf(h)
 		t := reflect.Indirect(reflectVal).Type()
@@ -457,6 +471,9 @@ func (b *Rest) Delete(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+func CopyField(to, from interface{}, excepts []string) error {
+	return copyField(to, from, excepts)
 }
 func copyField(to interface{}, from interface{}, excepts []string) error {
 	toVal := reflect.ValueOf(to)
