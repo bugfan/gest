@@ -129,7 +129,7 @@ type handlerRoute interface {
 }
 
 type handlerAfter interface {
-	After(*gin.Context, *xorm.Engine) bool
+	After(*gin.Context, *xorm.Engine, ...interface{})
 }
 
 type handlerNew interface {
@@ -251,7 +251,6 @@ func (b *Rest) New(c *gin.Context) {
 		c.AbortWithError(http.StatusUnprocessableEntity, err)
 		return
 	}
-
 	_, err = b.engine.Insert(model)
 	if err != nil {
 		_ = c.AbortWithError(http.StatusUnprocessableEntity, err)
@@ -262,6 +261,10 @@ func (b *Rest) New(c *gin.Context) {
 	if err != nil {
 		c.AbortWithError(http.StatusUnprocessableEntity, err)
 		return
+	}
+	ha, ok := content.(handlerAfter)
+	if ok {
+		ha.After(c, b.engine, model)
 	}
 
 	c.JSON(http.StatusCreated, data)
@@ -292,6 +295,10 @@ func (b *Rest) List(c *gin.Context) {
 		}
 
 		contentSlice = append(contentSlice, content)
+	}
+	ha, ok := content.(handlerAfter)
+	if ok {
+		ha.After(c, b.engine)
 	}
 	c.JSON(http.StatusOK, contentSlice)
 }
@@ -327,6 +334,10 @@ func (b *Rest) Get(c *gin.Context) {
 	if err != nil {
 		c.AbortWithError(http.StatusUnprocessableEntity, err)
 		return
+	}
+	ha, ok := content.(handlerAfter)
+	if ok {
+		ha.After(c, b.engine, inst)
 	}
 	c.JSON(200, content)
 }
@@ -382,6 +393,11 @@ func (b *Rest) Update(c *gin.Context) {
 		c.AbortWithError(http.StatusUnprocessableEntity, err)
 		return
 	}
+
+	ha, ok := content.(handlerAfter)
+	if ok {
+		ha.After(c, b.engine, inst)
+	}
 	c.JSON(http.StatusOK, content)
 }
 
@@ -435,6 +451,10 @@ func (b *Rest) Patch(c *gin.Context) {
 		c.AbortWithError(http.StatusUnprocessableEntity, err)
 		return
 	}
+	ha, ok := content.(handlerAfter)
+	if ok {
+		ha.After(c, b.engine, inst)
+	}
 	c.JSON(http.StatusOK, content)
 }
 
@@ -469,6 +489,10 @@ func (b *Rest) Delete(c *gin.Context) {
 	if err != nil {
 		c.AbortWithError(http.StatusUnprocessableEntity, err)
 		return
+	}
+	ha, ok := content.(handlerAfter)
+	if ok {
+		ha.After(c, b.engine, inst)
 	}
 	c.Status(http.StatusNoContent)
 }
