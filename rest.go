@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -120,7 +121,9 @@ type Rest struct {
 	HiddenField    []string
 	NotCopy        []string
 }
-
+type id struct {
+	Id int64
+}
 type handlerBefore interface {
 	Before(*gin.Context, *xorm.Engine) bool
 }
@@ -262,9 +265,12 @@ func (b *Rest) New(c *gin.Context) {
 		c.AbortWithError(http.StatusUnprocessableEntity, err)
 		return
 	}
+	o := &id{}
+	modelByte, _ := json.Marshal(model)
+	json.Unmarshal(modelByte, o)
 	ha, ok := content.(handlerAfter)
 	if ok {
-		ha.After(c, b.engine, model)
+		ha.After(c, b.engine, o.Id)
 	}
 
 	c.JSON(http.StatusCreated, data)
@@ -337,7 +343,7 @@ func (b *Rest) Get(c *gin.Context) {
 	}
 	ha, ok := content.(handlerAfter)
 	if ok {
-		ha.After(c, b.engine, inst)
+		ha.After(c, b.engine, id)
 	}
 	c.JSON(200, content)
 }
@@ -396,7 +402,7 @@ func (b *Rest) Update(c *gin.Context) {
 
 	ha, ok := content.(handlerAfter)
 	if ok {
-		ha.After(c, b.engine, inst)
+		ha.After(c, b.engine, id)
 	}
 	c.JSON(http.StatusOK, content)
 }
@@ -453,7 +459,7 @@ func (b *Rest) Patch(c *gin.Context) {
 	}
 	ha, ok := content.(handlerAfter)
 	if ok {
-		ha.After(c, b.engine, inst)
+		ha.After(c, b.engine, id)
 	}
 	c.JSON(http.StatusOK, content)
 }
@@ -492,7 +498,7 @@ func (b *Rest) Delete(c *gin.Context) {
 	}
 	ha, ok := content.(handlerAfter)
 	if ok {
-		ha.After(c, b.engine, inst)
+		ha.After(c, b.engine, id)
 	}
 	c.Status(http.StatusNoContent)
 }
