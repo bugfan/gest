@@ -17,6 +17,7 @@ type modelAndController struct {
 	Extra             []string
 	NotCopy           []string
 	HiddenFiled       []string
+	Route             RouteType
 }
 
 var modelAndControllers []*modelAndController
@@ -26,7 +27,7 @@ func init() {
 }
 
 // model:model struct controller:conttoller struct hiddenField:not copy field g: subrouting,bind route path
-func Register(model, controller interface{}, hiddenField []string, g ...string) {
+func Register(model, controller interface{}, route RouteType, hiddenField []string, g ...string) {
 	if model == nil || controller == nil {
 		return
 	}
@@ -34,6 +35,7 @@ func Register(model, controller interface{}, hiddenField []string, g ...string) 
 		Controller:  controller,
 		Model:       model,
 		Extra:       g,
+		Route:       route,
 		HiddenFiled: hiddenField,
 	}
 	modelAndControllers = append(modelAndControllers, t)
@@ -51,7 +53,7 @@ func NewAPIBackend(g *gin.RouterGroup, x *xorm.Engine, relativePath string) {
 		if controllerT.Kind() == reflect.Ptr {
 			controllerT = controllerT.Elem()
 		}
-		rest := NewRest(x, modelT, controllerT, RouteTypeALL, mc.HiddenFiled)
+		rest := NewRest(x, modelT, controllerT, mc.Route, mc.HiddenFiled)
 		subrouting := strings.ToLower(controllerT.Name())
 		if len(mc.Extra) > 0 && strings.TrimSpace(mc.Extra[0]) != "" {
 			subrouting = strings.TrimSpace(mc.Extra[0])
