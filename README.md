@@ -15,8 +15,8 @@ func main() {
 
 // api 
 func init(){
-    rest.RegisterModelAndController(&User{}, &UserController{}, nil, "user")
-	rest.RegisterModelAndController(&Admin{}, &AdminController{}, []string{"Password"}, "admin")
+    rest.RegisterModelAndController(&User{}, &UserController{}, rest.RouteTypeALL, nil, "user")	//bind all route
+	rest.RegisterModelAndController(&Admin{}, &AdminController{}, rest.RouteTypeGet, []string{"Password"}, "admin")	// just bind get method
 }
 type UserController struct{
     ID int64
